@@ -16,6 +16,12 @@ type HandlerDialer interface {
 	DialContext(ctx context.Context, net, address string) (net.Conn, error)
 }
 
+func patchRequest(req *http.Request) {
+	req.URL.Host = "dogapi.dog"
+	req.URL.Scheme = "https"
+	req.Host = req.URL.Host
+}
+
 type ProxyHandler struct {
 	timeout       time.Duration
 	auth          Auth
@@ -126,6 +132,7 @@ func (s *ProxyHandler) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	patchRequest(req)
 	isConnect := strings.ToUpper(req.Method) == "CONNECT"
 	if (req.URL.Host == "" || req.URL.Scheme == "" && !isConnect) && req.ProtoMajor < 2 ||
 		req.Host == "" && req.ProtoMajor == 2 {
