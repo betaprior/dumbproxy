@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -16,10 +17,24 @@ type HandlerDialer interface {
 	DialContext(ctx context.Context, net, address string) (net.Conn, error)
 }
 
-func patchRequest(req *http.Request) {
-	req.URL.Host = "dogapi.dog"
-	req.URL.Scheme = "https"
-	req.Host = req.URL.Host
+func patchRequest(req *http.Request) error {
+	hostMappings := REWRITE_RULES.Hosts
+	origHost := req.Host
+	if !strings.Contains(origHost, "://") {
+		origHost = "https://" + origHost
+	}
+	parsedURL, err := url.Parse(origHost)
+	if err != nil {
+		return err
+	}
+	if mappedUrl, ok := hostMappings[parsedURL.Hostname()]; !ok {
+		return fmt.Errorf("Host not found in host mappings: %s", parsedURL.Hostname())
+	} else {
+		req.URL.Host = mappedUrl
+		req.URL.Scheme = parsedURL.Scheme
+		req.Host = req.URL.Host
+	}
+	return nil
 }
 
 type ProxyHandler struct {
@@ -131,8 +146,12 @@ func (s *ProxyHandler) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 		http.Error(wr, BAD_REQ_MSG, http.StatusBadRequest)
 		return
 	}
-
-	patchRequest(req)
+	if err := patchRequest(req); err != nil {
+		msg := "Error patching request or not whitelisted"
+		s.logger.Error("%s: %v", msg, err)
+		http.Error(wr, msg, http.StatusForbidden)
+		return
+	}
 	isConnect := strings.ToUpper(req.Method) == "CONNECT"
 	if (req.URL.Host == "" || req.URL.Scheme == "" && !isConnect) && req.ProtoMajor < 2 ||
 		req.Host == "" && req.ProtoMajor == 2 {

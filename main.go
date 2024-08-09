@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -16,7 +17,10 @@ import (
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/yaml.v2"
 )
+
+const HOST_MAPPINGS_YAML = "host_mappings.yaml"
 
 var (
 	home, _ = os.UserHomeDir()
@@ -112,6 +116,24 @@ func (a *TLSVersionArg) String() string {
 	}
 }
 
+type HostRewriteConfig struct {
+	Hosts map[string]string `yaml:"hosts"`
+}
+
+var REWRITE_RULES = new(HostRewriteConfig)
+
+func parseHostsMap() {
+	data, err := ioutil.ReadFile(HOST_MAPPINGS_YAML)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
+
+	err = yaml.Unmarshal(data, REWRITE_RULES)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
+}
+
 type CLIArgs struct {
 	bind_address      string
 	auth              string
@@ -178,6 +200,7 @@ func parse_args() CLIArgs {
 }
 
 func run() int {
+	parseHostsMap()
 	args := parse_args()
 
 	if args.showVersion {
